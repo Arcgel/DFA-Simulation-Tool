@@ -1,0 +1,9 @@
+# DFA Simulator Requirements
+
+# Core visualization
+PyQt5>=5.15.0
+matplotlib>=3.5.0
+networkx>=2.6.0
+
+# Optional: for better graph layouts
+# pygraphviz>=1.9  # Requires Graphviz installation
