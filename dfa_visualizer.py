@@ -194,24 +194,34 @@ class DFAVisualizerWindow(QMainWindow):
         title.setAlignment(Qt.AlignCenter)
         left_panel.addWidget(title)
         
-        # Load, Create, and Clear DFA buttons
-        btn_layout = QHBoxLayout()
+        # Load, Create, Edit, and Clear DFA buttons
+        btn_layout1 = QHBoxLayout()
         
         load_btn = QPushButton('📁 Load')
         load_btn.clicked.connect(self.load_dfa)
-        btn_layout.addWidget(load_btn)
+        btn_layout1.addWidget(load_btn)
         
         create_btn = QPushButton('✏️ Create')
         create_btn.clicked.connect(self.create_dfa)
         create_btn.setStyleSheet('background-color: #2196F3; color: white;')
-        btn_layout.addWidget(create_btn)
+        btn_layout1.addWidget(create_btn)
+        
+        left_panel.addLayout(btn_layout1)
+        
+        btn_layout2 = QHBoxLayout()
+        
+        self.edit_btn = QPushButton('📝 Edit')
+        self.edit_btn.clicked.connect(self.edit_dfa)
+        self.edit_btn.setEnabled(False)
+        self.edit_btn.setStyleSheet('background-color: #FF9800; color: white;')
+        btn_layout2.addWidget(self.edit_btn)
         
         clear_dfa_btn = QPushButton('🗑️ Clear')
         clear_dfa_btn.clicked.connect(self.clear_dfa)
         clear_dfa_btn.setStyleSheet('background-color: #f44336; color: white;')
-        btn_layout.addWidget(clear_dfa_btn)
+        btn_layout2.addWidget(clear_dfa_btn)
         
-        left_panel.addLayout(btn_layout)
+        left_panel.addLayout(btn_layout2)
         
         # DFA info
         self.info_label = QLabel('No DFA loaded')
@@ -306,6 +316,7 @@ class DFAVisualizerWindow(QMainWindow):
                 )
                 self.info_label.setText(info_text)
                 
+                self.edit_btn.setEnabled(True)
                 self.result_label.setText('')
                 self.trace_output.clear()
                 
@@ -331,6 +342,33 @@ class DFAVisualizerWindow(QMainWindow):
                 )
                 self.info_label.setText(info_text)
                 
+                self.edit_btn.setEnabled(True)
+                self.result_label.setText('')
+                self.trace_output.clear()
+    
+    def edit_dfa(self):
+        """Open DFA builder dialog to edit the current DFA."""
+        if self.dfa is None:
+            QMessageBox.warning(self, 'Warning', 'No DFA loaded to edit.')
+            return
+        
+        builder = DFABuilderDialog(self, existing_dfa=self.dfa)
+        if builder.exec_() == QDialog.Accepted:
+            dfa = builder.get_dfa()
+            if dfa:
+                self.dfa = dfa
+                self.canvas.set_dfa(self.dfa)
+                
+                info_text = (
+                    f"<b>Edited</b><br>"
+                    f"States: {', '.join(sorted(self.dfa.states))}<br>"
+                    f"Alphabet: {', '.join(sorted(self.dfa.alphabet))}<br>"
+                    f"Start State: {self.dfa.start_state}<br>"
+                    f"Final States: {', '.join(sorted(self.dfa.final_states))}<br>"
+                    f"Transitions: {len(self.dfa.transitions)}"
+                )
+                self.info_label.setText(info_text)
+                
                 self.result_label.setText('')
                 self.trace_output.clear()
     
@@ -347,6 +385,7 @@ class DFAVisualizerWindow(QMainWindow):
             self.dfa = None
             self.canvas.set_dfa(None)
             self.info_label.setText('No DFA loaded')
+            self.edit_btn.setEnabled(False)
             self.result_label.setText('')
             self.trace_output.clear()
             self.test_input.clear()

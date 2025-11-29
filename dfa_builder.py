@@ -13,9 +13,9 @@ from dfa import DFA
 class DFABuilderDialog(QDialog):
     """Dialog for manually creating a DFA."""
     
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, existing_dfa=None):
         super().__init__(parent)
-        self.setWindowTitle('Create DFA Manually')
+        self.setWindowTitle('Edit DFA' if existing_dfa else 'Create DFA Manually')
         self.setGeometry(150, 150, 800, 600)
         self.setModal(True)
         
@@ -26,6 +26,10 @@ class DFABuilderDialog(QDialog):
         self.final_states = []
         
         self.init_ui()
+        
+        # Load existing DFA if provided
+        if existing_dfa:
+            self.load_existing_dfa(existing_dfa)
     
     def init_ui(self):
         """Initialize the user interface."""
@@ -439,3 +443,32 @@ class DFABuilderDialog(QDialog):
     def get_dfa(self):
         """Return the created DFA."""
         return self.dfa if hasattr(self, 'dfa') else None
+    
+    def load_existing_dfa(self, dfa):
+        """Load an existing DFA into the builder for editing."""
+        # Load states
+        self.states = sorted(list(dfa.states))
+        for state in self.states:
+            self.states_list.addItem(state)
+        
+        # Load alphabet
+        self.alphabet = sorted(list(dfa.alphabet))
+        for symbol in self.alphabet:
+            self.alphabet_list.addItem(symbol)
+        
+        # Load transitions
+        self.transitions = dict(dfa.transitions)
+        self.update_transitions_table()
+        
+        # Load start state
+        self.start_state = dfa.start_state
+        self.start_state_label.setText(f'Start State: {self.start_state}')
+        self.start_state_label.setStyleSheet('padding: 5px; background-color: #c8e6c9;')
+        
+        # Load final states
+        self.final_states = sorted(list(dfa.final_states))
+        for state in self.final_states:
+            self.final_states_list.addItem(state)
+        
+        # Update all combo boxes
+        self.update_combos()

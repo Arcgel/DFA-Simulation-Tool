@@ -246,6 +246,9 @@ class InteractiveDebuggerWindow(QMainWindow):
         self.dfa = None
         self.trace_steps = []
         self.current_step_index = -1
+        self.dfa_modified = False
+        self.dfa_source = None  # 'loaded' or 'created'
+        self.dfa_filename = None
         self.init_ui()
     
     def init_ui(self):
@@ -279,24 +282,34 @@ class InteractiveDebuggerWindow(QMainWindow):
         load_group = QGroupBox("1. Load DFA")
         load_layout = QVBoxLayout()
         
-        # Load, Create, and Clear buttons
-        btn_layout = QHBoxLayout()
+        # Load, Create, Edit, and Clear buttons
+        btn_layout1 = QHBoxLayout()
         
         load_btn = QPushButton('📁 Load')
         load_btn.clicked.connect(self.load_dfa)
-        btn_layout.addWidget(load_btn)
+        btn_layout1.addWidget(load_btn)
         
         create_btn = QPushButton('✏️ Create')
         create_btn.clicked.connect(self.create_dfa)
         create_btn.setStyleSheet('background-color: #2196F3; color: white;')
-        btn_layout.addWidget(create_btn)
+        btn_layout1.addWidget(create_btn)
+        
+        load_layout.addLayout(btn_layout1)
+        
+        btn_layout2 = QHBoxLayout()
+        
+        self.edit_btn = QPushButton('📝 Edit')
+        self.edit_btn.clicked.connect(self.edit_dfa)
+        self.edit_btn.setEnabled(False)
+        self.edit_btn.setStyleSheet('background-color: #FF9800; color: white;')
+        btn_layout2.addWidget(self.edit_btn)
         
         clear_dfa_btn = QPushButton('🗑️ Clear')
         clear_dfa_btn.clicked.connect(self.clear_dfa)
         clear_dfa_btn.setStyleSheet('background-color: #f44336; color: white;')
-        btn_layout.addWidget(clear_dfa_btn)
+        btn_layout2.addWidget(clear_dfa_btn)
         
-        load_layout.addLayout(btn_layout)
+        load_layout.addLayout(btn_layout2)
         
         self.dfa_info = QLabel('No DFA loaded')
         self.dfa_info.setWordWrap(True)
@@ -427,8 +440,61 @@ class InteractiveDebuggerWindow(QMainWindow):
         main_layout.addWidget(left_scroll)
         main_layout.addLayout(right_panel, 1)
     
+    def check_unsaved_changes(self):
+        """Check if there are unsaved changes and prompt user."""
+        if self.dfa_modified and self.dfa is not None:
+            reply = QMessageBox.question(
+                self, 'Unsaved Changes',
+                'You have unsaved changes to the current DFA.\n\n'
+                'Do you want to save before continuing?',
+                QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+                QMessageBox.Save
+            )
+            
+            if reply == QMessageBox.Save:
+                return self.save_dfa()
+            elif reply == QMessageBox.Cancel:
+                return False
+            # Discard
+            return True
+        return True
+    
+    def save_dfa(self):
+        """Save the current DFA to a JSON file."""
+        from dfa import export_dfa_to_json
+        
+        # Suggest filename based on source
+        default_name = self.dfa_filename if self.dfa_filename else "my_dfa.json"
+        
+        filename, _ = QFileDialog.getSaveFileName(
+            self, 'Save DFA', default_name, 'JSON Files (*.json);;All Files (*)'
+        )
+        
+        if filename:
+            try:
+                export_dfa_to_json(self.dfa, filename)
+                self.dfa_modified = False
+                self.dfa_filename = filename
+                QMessageBox.information(self, 'Success', f'DFA saved to {filename}')
+                return True
+            except Exception as e:
+                QMessageBox.critical(self, 'Error', f'Failed to save DFA:\n{str(e)}')
+                return False
+        return False
+    
+    def closeEvent(self, event):
+        """Handle window close event."""
+        if self.check_unsaved_changes():
+            event.accept()
+        else:
+            event.ignore()
+    
     def load_dfa(self):
         """Load DFA from JSON file."""
+        # Check for unsaved changes
+        if not self.check_unsaved_changes():
+            return
+        
         filename, _ = QFileDialog.getOpenFileName(
             self, 'Load DFA', '', 'JSON Files (*.json);;All Files (*)'
         )
@@ -436,6 +502,9 @@ class InteractiveDebuggerWindow(QMainWindow):
         if filename:
             try:
                 self.dfa = import_dfa_from_json(filename)
+                self.dfa_source = 'loaded'
+                self.dfa_filename = filename
+                self.dfa_modified = False
                 self.canvas.set_dfa(self.dfa)
                 
                 info_text = (
@@ -447,6 +516,7 @@ class InteractiveDebuggerWindow(QMainWindow):
                 )
                 self.dfa_info.setText(info_text)
                 
+                self.edit_btn.setEnabled(True)
                 self.reset_debug()
                 
             except Exception as e:
@@ -454,15 +524,48 @@ class InteractiveDebuggerWindow(QMainWindow):
     
     def create_dfa(self):
         """Open DFA builder dialog to create a DFA manually."""
+        # Check for unsaved changes
+        if not self.check_unsaved_changes():
+            return
+        
         builder = DFABuilderDialog(self)
         if builder.exec_() == QDialog.Accepted:
             dfa = builder.get_dfa()
             if dfa:
                 self.dfa = dfa
                 self.canvas.set_dfa(self.dfa)
+                self.dfa_source = 'created'
+                self.dfa_filename = None
+                self.dfa_modified = False
                 
                 info_text = (
                     f"<b>Created Manually</b><br>"
+                    f"<b>States:</b> {len(self.dfa.states)}<br>"
+                    f"<b>Alphabet:</b> {{{', '.join(sorted(self.dfa.alphabet))}}}<br>"
+                    f"<b>Start:</b> {self.dfa.start_state}<br>"
+                    f"<b>Final:</b> {{{', '.join(sorted(self.dfa.final_states))}}}"
+                )
+                self.dfa_info.setText(info_text)
+                
+                self.edit_btn.setEnabled(True)
+                self.reset_debug()
+    
+    def edit_dfa(self):
+        """Open DFA builder dialog to edit the current DFA."""
+        if self.dfa is None:
+            QMessageBox.warning(self, 'Warning', 'No DFA loaded to edit.')
+            return
+        
+        builder = DFABuilderDialog(self, existing_dfa=self.dfa)
+        if builder.exec_() == QDialog.Accepted:
+            dfa = builder.get_dfa()
+            if dfa:
+                self.dfa = dfa
+                self.canvas.set_dfa(self.dfa)
+                self.dfa_modified = True
+                
+                info_text = (
+                    f"<b>Edited (Unsaved)</b><br>"
                     f"<b>States:</b> {len(self.dfa.states)}<br>"
                     f"<b>Alphabet:</b> {{{', '.join(sorted(self.dfa.alphabet))}}}<br>"
                     f"<b>Start:</b> {self.dfa.start_state}<br>"
@@ -485,6 +588,7 @@ class InteractiveDebuggerWindow(QMainWindow):
             self.dfa = None
             self.canvas.set_dfa(None)
             self.dfa_info.setText('No DFA loaded')
+            self.edit_btn.setEnabled(False)
             self.reset_debug()
             self.input_field.clear()
     
